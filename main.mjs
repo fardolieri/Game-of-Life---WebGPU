@@ -1,11 +1,12 @@
 // https://codelabs.developers.google.com/your-first-webgpu-app
 
+const UPDATE_INTERVAL = 500; // Update every 500ms (2 times/sec)
 
 const adapter = await navigator.gpu.requestAdapter();
 const device = await adapter.requestDevice();
 
 const canvas = document.querySelector("canvas");
-const scale = 100;
+const scale = 10;
 const GRID = [Math.floor(canvas.width / scale), Math.floor(canvas.height / scale)]
 
 const context = canvas.getContext("webgpu");
@@ -52,14 +53,16 @@ const cellShaderModule = device.createShaderModule({
     };
 
     @group(0) @binding(0) var<uniform> grid: vec2f;
+    @group(0) @binding(1) var<storage> cellState: array<u32>;
 
     @vertex
     fn vertexMain(@location(0) pos: vec2f, @builtin(instance_index) instance: u32) -> VertexOutput {
       let i = f32(instance);
       let cell = vec2f(i % grid.x, floor(i / grid.x));
+      let state = f32(cellState[instance]);
 
       let cellOffset = (cell / grid) * 2;
-      let gridPos = (pos + 1) / grid - 1 + cellOffset;
+      let gridPos = (pos * state + 1) / grid - 1 + cellOffset;
 
       var output: VertexOutput;
       output.pos = vec4f(gridPos, 0, 1);
@@ -99,32 +102,79 @@ const uniformBuffer = device.createBuffer({
 
 device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
 
-const bindGroup = device.createBindGroup({
-  label: "Cell renderer bind group",
-  layout: cellPipeline.getBindGroupLayout(0),
-  entries: [{
-    binding: 0,
-    resource: { buffer: uniformBuffer }
-  }],
-});
+
+const cellStateArray = new Uint32Array(GRID[0] * GRID[1]);
+const cellStateStorage = [
+  device.createBuffer({
+    label: "Cell State A",
+    size: cellStateArray.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  }),
+  device.createBuffer({
+    label: "Cell State B",
+    size: cellStateArray.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  })
+];
+
+for (let i = 0; i < cellStateArray.length; i += 3) {
+  cellStateArray[i] = 1;
+}
+device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
+
+for (let i = 0; i < cellStateArray.length; i++) {
+  cellStateArray[i] = i % 2;
+}
+device.queue.writeBuffer(cellStateStorage[1], 0, cellStateArray);
 
 
-const encoder = device.createCommandEncoder();
-const pass = encoder.beginRenderPass({
-  colorAttachments: [{
-    view: context.getCurrentTexture().createView(),
-    loadOp: "clear",
-    clearValue: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
-    storeOp: "store",
-  }]
-})
+const bindGroups = [
+  device.createBindGroup({
+    label: "Cell renderer bind group A",
+    layout: cellPipeline.getBindGroupLayout(0),
+    entries: [{
+      binding: 0,
+      resource: { buffer: uniformBuffer }
+    }, {
+      binding: 1,
+      resource: { buffer: cellStateStorage[0] }
+    }],
+  }),
+  device.createBindGroup({
+    label: "Cell renderer bind group B",
+    layout: cellPipeline.getBindGroupLayout(0),
+    entries: [{
+      binding: 0,
+      resource: { buffer: uniformBuffer }
+    }, {
+      binding: 1,
+      resource: { buffer: cellStateStorage[1] }
+    }],
+  })
+];
 
-pass.setPipeline(cellPipeline);
-pass.setVertexBuffer(0, vertexBuffer);
 
-pass.setBindGroup(0, bindGroup);
+let step = 0; // Track how many simulation steps have been run
+function updateGrid() {
+  step++;
 
-pass.draw(vertices.length / 2, GRID[0] * GRID[1]);
-pass.end()
+  const encoder = device.createCommandEncoder();
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      loadOp: "clear",
+      clearValue: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+      storeOp: "store",
+    }]
+  })
 
-device.queue.submit([encoder.finish()]);
+  pass.setPipeline(cellPipeline);
+  pass.setBindGroup(0, bindGroups[step % 2]);
+  pass.setVertexBuffer(0, vertexBuffer);
+  pass.draw(vertices.length / 2, GRID[0] * GRID[1]);
+
+  pass.end()
+  device.queue.submit([encoder.finish()]);
+}
+
+setInterval(updateGrid, UPDATE_INTERVAL);
