@@ -6,9 +6,12 @@ const WORKGROUP_SIZE = 8;
 const adapter = await navigator?.gpu?.requestAdapter();
 const device = await adapter?.requestDevice();
 
-if (!device) document.body.innerText = 'It looks like your browser does not support WebGPU :(';
+if (!device) document.body.innerText = 'It looks like your browser does not support WebGPU 😕';
 
 const canvas = document.querySelector("canvas");
+canvas.width = Math.floor(document.body.clientWidth * 0.9);
+canvas.height = Math.floor(document.body.clientHeight * 0.9);
+
 const scale = 10;
 const GRID = [Math.floor(canvas.width / scale), Math.floor(canvas.height / scale)]
 
