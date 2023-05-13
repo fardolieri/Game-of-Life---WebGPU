@@ -2,7 +2,9 @@
   "name": "webgpu",
   "version": "1.0.0",
   "type": "module",
-  "scripts": {},
+  "scripts": {
+    "deploy": "gh-pages --dist . --no-history"
+  },
   "devDependencies": {
     "@webgpu/types": "^0.1.32",
     "gh-pages": "^5.0.0"
