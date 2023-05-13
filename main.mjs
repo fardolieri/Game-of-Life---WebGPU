@@ -3,8 +3,10 @@
 const UPDATE_INTERVAL = 10; // Update every 100ms
 const WORKGROUP_SIZE = 8;
 
-const adapter = await navigator.gpu.requestAdapter();
-const device = await adapter.requestDevice();
+const adapter = await navigator?.gpu?.requestAdapter();
+const device = await adapter?.requestDevice();
+
+if (!device) document.body.innerText = 'It looks like your browser does not support WebGPU :(';
 
 const canvas = document.querySelector("canvas");
 const scale = 10;

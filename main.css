@@ -6,4 +6,5 @@ body {
   height: 100vh;
   margin: 0;
   background-color: lightgrey;
+  font-family: system-ui;
 }
