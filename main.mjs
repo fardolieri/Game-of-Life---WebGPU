@@ -1,6 +1,6 @@
 // https://codelabs.developers.google.com/your-first-webgpu-app
 
-const UPDATE_INTERVAL = 500; // Update every 500ms (2 times/sec)
+const UPDATE_INTERVAL = 10; // Update every 100ms
 const WORKGROUP_SIZE = 8;
 
 const adapter = await navigator.gpu.requestAdapter();
@@ -88,14 +88,43 @@ const simulationShaderModule = device.createShaderModule({
     @group(0) @binding(2) var<storage, read_write> cellStateOut: array<u32>;
 
     fn cellIndex(cell: vec2u) -> u32 {
-      return cell.y * u32(grid.x) + cell.x;
+      let y = cell.y % u32(grid.y);
+      let x = cell.x % u32(grid.x);
+      return y * u32(grid.x) + x;
+    }
+
+    fn cellActive(x: u32, y: u32) -> u32 {
+      return cellStateIn[cellIndex(vec2u(x, y))];
     }
 
     @compute
     @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE})
     fn computeMain(@builtin(global_invocation_id) cell: vec3u) {
-      let index = cellIndex(cell.xy);
-      cellStateOut[index] = 1 - cellStateIn[index];
+      let i = cellIndex(cell.xy);
+
+      let activeNeighbors = 0 +
+        cellActive(cell.x-1, cell.y-1) +
+        cellActive(cell.x,   cell.y-1) +
+        cellActive(cell.x+1, cell.y-1) +
+        cellActive(cell.x-1, cell.y)   +
+        cellActive(cell.x+1, cell.y)   +
+        cellActive(cell.x-1, cell.y+1) +
+        cellActive(cell.x,   cell.y+1) +
+        cellActive(cell.x+1, cell.y+1);
+
+      switch activeNeighbors {
+        case 2: { // Active cells with 2 neighbors stay active.
+          cellStateOut[i] = cellStateIn[i];
+        }
+        case 3: { // Cells with 3 neighbors become or stay active.
+          cellStateOut[i] = 1;
+        }
+        default: { // Cells with < 2 or > 3 neighbors become inactive.
+          cellStateOut[i] = 0;
+        }
+      }
+
+      // if () cellStateOut[i] = 0
     }`
 });
 
@@ -161,8 +190,8 @@ const cellStateStorage = [
   })
 ];
 
-for (let i = 0; i < cellStateArray.length; i += 3) {
-  cellStateArray[i] = 1;
+for (let i = 0; i < cellStateArray.length; i++) {
+  cellStateArray[i] = Math.random() > 0.6 ? 1 : 0;
 }
 device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
 
@@ -198,8 +227,10 @@ function updateGrid() {
   computePass.setPipeline(simulationPipeline);
   computePass.setBindGroup(0, bindGroups[step % 2]);
 
-  const workgroupCount = Math.ceil(GRID[0] / WORKGROUP_SIZE);
-  computePass.dispatchWorkgroups(workgroupCount, workgroupCount);
+  computePass.dispatchWorkgroups(
+    Math.ceil(GRID[0] / WORKGROUP_SIZE),
+    Math.ceil(GRID[1] / WORKGROUP_SIZE)
+  );
 
   computePass.end();
 
