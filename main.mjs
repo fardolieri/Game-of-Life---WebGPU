@@ -1,6 +1,7 @@
 // https://codelabs.developers.google.com/your-first-webgpu-app
 
 const UPDATE_INTERVAL = 500; // Update every 500ms (2 times/sec)
+const WORKGROUP_SIZE = 8;
 
 const adapter = await navigator.gpu.requestAdapter();
 const device = await adapter.requestDevice();
@@ -78,9 +79,43 @@ const cellShaderModule = device.createShaderModule({
     `
 });
 
+const simulationShaderModule = device.createShaderModule({
+  label: "Game of Life simulation shader",
+  code: `
+    @group(0) @binding(0) var<uniform> grid: vec2f;
+
+    @group(0) @binding(1) var<storage> cellStateIn: array<u32>;
+    @group(0) @binding(2) var<storage, read_write> cellStateOut: array<u32>;
+
+    fn cellIndex(cell: vec2u) -> u32 {
+      return cell.y * u32(grid.x) + cell.x;
+    }
+
+    @compute
+    @workgroup_size(${WORKGROUP_SIZE}, ${WORKGROUP_SIZE})
+    fn computeMain(@builtin(global_invocation_id) cell: vec3u) {
+      let index = cellIndex(cell.xy);
+      cellStateOut[index] = 1 - cellStateIn[index];
+    }`
+});
+
+const bindGroupLayout = device.createBindGroupLayout({
+  label: 'Cell Bind Group Layout',
+  entries: [
+    { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+    { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+    { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+  ],
+})
+
+const pipelineLayout = device.createPipelineLayout({
+  label: "Cell Pipeline Layout",
+  bindGroupLayouts: [bindGroupLayout],
+});
+
 const cellPipeline = device.createRenderPipeline({
   label: 'Cell pipeline',
-  layout: 'auto',
+  layout: pipelineLayout,
   vertex: {
     module: cellShaderModule,
     entryPoint: 'vertexMain',
@@ -90,6 +125,15 @@ const cellPipeline = device.createRenderPipeline({
     module: cellShaderModule,
     entryPoint: 'fragmentMain',
     targets: [{ format: canvasFormat }]
+  }
+});
+
+const simulationPipeline = device.createComputePipeline({
+  label: "Simulation pipeline",
+  layout: pipelineLayout,
+  compute: {
+    module: simulationShaderModule,
+    entryPoint: "computeMain",
   }
 });
 
@@ -122,43 +166,45 @@ for (let i = 0; i < cellStateArray.length; i += 3) {
 }
 device.queue.writeBuffer(cellStateStorage[0], 0, cellStateArray);
 
-for (let i = 0; i < cellStateArray.length; i++) {
-  cellStateArray[i] = i % 2;
-}
-device.queue.writeBuffer(cellStateStorage[1], 0, cellStateArray);
-
 
 const bindGroups = [
   device.createBindGroup({
     label: "Cell renderer bind group A",
-    layout: cellPipeline.getBindGroupLayout(0),
-    entries: [{
-      binding: 0,
-      resource: { buffer: uniformBuffer }
-    }, {
-      binding: 1,
-      resource: { buffer: cellStateStorage[0] }
-    }],
+    layout: bindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: uniformBuffer } },
+      { binding: 1, resource: { buffer: cellStateStorage[0] } },
+      { binding: 2, resource: { buffer: cellStateStorage[1] } },
+    ],
   }),
   device.createBindGroup({
     label: "Cell renderer bind group B",
-    layout: cellPipeline.getBindGroupLayout(0),
-    entries: [{
-      binding: 0,
-      resource: { buffer: uniformBuffer }
-    }, {
-      binding: 1,
-      resource: { buffer: cellStateStorage[1] }
-    }],
-  })
+    layout: bindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: uniformBuffer } },
+      { binding: 1, resource: { buffer: cellStateStorage[1] } },
+      { binding: 2, resource: { buffer: cellStateStorage[0] } },
+    ],
+  }),
 ];
 
 
 let step = 0; // Track how many simulation steps have been run
 function updateGrid() {
+  const encoder = device.createCommandEncoder();
+
+  const computePass = encoder.beginComputePass();
+
+  computePass.setPipeline(simulationPipeline);
+  computePass.setBindGroup(0, bindGroups[step % 2]);
+
+  const workgroupCount = Math.ceil(GRID[0] / WORKGROUP_SIZE);
+  computePass.dispatchWorkgroups(workgroupCount, workgroupCount);
+
+  computePass.end();
+
   step++;
 
-  const encoder = device.createCommandEncoder();
   const pass = encoder.beginRenderPass({
     colorAttachments: [{
       view: context.getCurrentTexture().createView(),
