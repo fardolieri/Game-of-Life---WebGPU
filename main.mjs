@@ -87,6 +87,8 @@ const simulationShaderModule = device.createShaderModule({
     @group(0) @binding(1) var<storage> cellStateIn: array<u32>;
     @group(0) @binding(2) var<storage, read_write> cellStateOut: array<u32>;
 
+    @group(0) @binding(3) var<uniform> randomFlip: u32;
+
     fn cellIndex(cell: vec2u) -> u32 {
       let y = cell.y % u32(grid.y);
       let x = cell.x % u32(grid.x);
@@ -124,7 +126,7 @@ const simulationShaderModule = device.createShaderModule({
         }
       }
 
-      // if () cellStateOut[i] = 0
+      if ((randomFlip - 1) == i) { cellStateOut[i] = 1 - cellStateOut[i]; }
     }`
 });
 
@@ -134,6 +136,7 @@ const bindGroupLayout = device.createBindGroupLayout({
     { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
     { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
     { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+    { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
   ],
 })
 
@@ -176,6 +179,16 @@ const uniformBuffer = device.createBuffer({
 device.queue.writeBuffer(uniformBuffer, 0, uniformArray);
 
 
+const randomFlip = new Uint32Array([0]);
+const randomFlipBuffer = device.createBuffer({
+  label: "Random Flip Buffer",
+  size: randomFlip.byteLength,
+  usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+});
+
+device.queue.writeBuffer(randomFlipBuffer, 0, randomFlip);
+
+
 const cellStateArray = new Uint32Array(GRID[0] * GRID[1]);
 const cellStateStorage = [
   device.createBuffer({
@@ -204,6 +217,7 @@ const bindGroups = [
       { binding: 0, resource: { buffer: uniformBuffer } },
       { binding: 1, resource: { buffer: cellStateStorage[0] } },
       { binding: 2, resource: { buffer: cellStateStorage[1] } },
+      { binding: 3, resource: { buffer: randomFlipBuffer } },
     ],
   }),
   device.createBindGroup({
@@ -213,6 +227,7 @@ const bindGroups = [
       { binding: 0, resource: { buffer: uniformBuffer } },
       { binding: 1, resource: { buffer: cellStateStorage[1] } },
       { binding: 2, resource: { buffer: cellStateStorage[0] } },
+      { binding: 3, resource: { buffer: randomFlipBuffer } },
     ],
   }),
 ];
@@ -221,6 +236,11 @@ const bindGroups = [
 let step = 0; // Track how many simulation steps have been run
 function updateGrid() {
   const encoder = device.createCommandEncoder();
+
+  const chance = 0.01;
+  const randomness = Math.random();
+  const i = randomness < chance ? Math.floor((randomness / chance) * (GRID[0] * GRID[1])) + 1 : 0
+  device.queue.writeBuffer(randomFlipBuffer, 0, new Int32Array([i]));
 
   const computePass = encoder.beginComputePass();
 
