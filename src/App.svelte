@@ -334,7 +334,7 @@
       device.queue.submit([encoder.finish()]);
     }
 
-    intervalCleaner = setInterval(updateGrid, UPDATE_INTERVAL);
+    intervalCleaner = setInterval(updateGrid, getUpdateInterval());
 
     function reactiveVariable(
       init,
