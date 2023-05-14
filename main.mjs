@@ -13,8 +13,27 @@ if (!device) {
 }
 
 const canvas = document.querySelector("canvas");
-canvas.width = Math.floor(document.body.clientWidth * 0.9);
-canvas.height = Math.floor(document.body.clientHeight * 0.9);
+canvas.width = Math.floor(window.innerWidth * 0.9);
+canvas.height = Math.floor(window.innerHeight * 0.9);
+
+const chance = reactiveVariable(0.01, '.chance-setting input', '.chance-setting span');
+
+let intervalCleaner;
+const framesPerSecond = reactiveVariable(
+  60,
+  '.frame-setting input',
+  '.frame-setting span',
+  () => {
+    clearInterval(intervalCleaner);
+    intervalCleaner = setInterval(updateGrid, getUpdateInterval());
+  });
+
+function getUpdateInterval() {
+  return Math.min(
+    Math.pow(2, 31) - 1, // Max allowed value for setInterval
+    (1 / +framesPerSecond.value) * 1000,
+  )
+}
 
 const scale = 10;
 const GRID = [Math.floor(canvas.width / scale), Math.floor(canvas.height / scale)]
@@ -246,9 +265,8 @@ let step = 0; // Track how many simulation steps have been run
 function updateGrid() {
   const encoder = device.createCommandEncoder();
 
-  const chance = 0.01;
   const randomness = Math.random();
-  const i = randomness < chance ? Math.floor((randomness / chance) * (GRID[0] * GRID[1])) + 1 : 0
+  const i = randomness < chance.value ? Math.floor((randomness / chance.value) * (GRID[0] * GRID[1])) + 1 : 0
   device.queue.writeBuffer(randomFlipBuffer, 0, new Int32Array([i]));
 
   const computePass = encoder.beginComputePass();
@@ -283,4 +301,24 @@ function updateGrid() {
   device.queue.submit([encoder.finish()]);
 }
 
-setInterval(updateGrid, UPDATE_INTERVAL);
+intervalCleaner = setInterval(updateGrid, UPDATE_INTERVAL);
+
+
+
+
+
+function reactiveVariable(init, inputElSelector, outputElSelector, onChange) {
+  let result = { value: init };
+
+  const inputEl = document.querySelector(inputElSelector);
+  const outputEl = document.querySelector(outputElSelector);
+
+  outputEl.innerHTML = inputEl.value = result.value;
+
+  inputEl.oninput = function () {
+    outputEl.innerHTML = result.value = this.value;
+    onChange?.(result.value);
+  }
+
+  return result;
+}
