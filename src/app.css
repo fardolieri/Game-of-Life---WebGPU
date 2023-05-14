@@ -1,0 +1,11 @@
+body {
+  min-width: 100vw;
+  min-height: 100vh;
+  margin: 0;
+  background-color: lightgrey;
+  font-family: system-ui;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}

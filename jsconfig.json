@@ -1,8 +1,0 @@
-{
-  "compilerOptions": {
-    "module": "ESNext",
-    "target": "ESNext",
-    "checkJs": true,
-    "typeRoots": [ "./node_modules/@webgpu/types", "./node_modules/@types"]
-  }
-}
