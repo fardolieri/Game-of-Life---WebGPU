@@ -403,7 +403,6 @@ canvas {
 }
 
 .settings {
-  /* width: 100%; */
   margin-top: 2rem;
   margin-bottom: 2rem;
   display: flex;
@@ -415,10 +414,5 @@ canvas {
   display: flex;
   flex-direction: column;
   flex: 1 0 auto;
-}
-
-::-webkit-scrollbar {
-  /* Hide chrome's ugly scrollbar */
-  width: 0;
 }
 </style>

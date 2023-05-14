@@ -7,8 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "build-for-deploy": "vite build --outDir dist-gh --base /Game-of-Life---WebGPU",
-    "deploy": "gh-pages --dist dist-gh --no-history"
+    "deploy": "vite build --outDir dist-gh --base /Game-of-Life---WebGPU && gh-pages --dist dist-gh --no-history"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.32",
