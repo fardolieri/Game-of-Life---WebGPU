@@ -3,11 +3,15 @@ type T = $$Generic;
 
 export let value: T;
 export let name: string;
+export let min = 1;
+export let max = 1;
+export let step = 0.1;
+
 </script>
 
 <div class="settings-item">
   <div>{name}</div>
-  <input type="range" min="0" max="1" step="0.01" bind:value />
+  <input type="range" {min} {max} {step} bind:value />
   <span>{value}</span>
 </div>
 

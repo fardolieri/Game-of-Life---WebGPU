@@ -1,34 +1,32 @@
 <script lang="ts">
-import { onMount } from 'svelte';
+import { onDestroy, onMount } from 'svelte';
+import { writable } from 'svelte/store';
 
+export let device: GPUDevice;
 export let width: number;
 export let height: number;
 export let scale: number;
 export let framesPerSecond: number;
 export let chance: number;
 
-export let canvasRef: HTMLCanvasElement | null = null;
+export let canvas: HTMLCanvasElement | null = null;
 
-$: updateInterval = Math.min(
-    Math.pow(2, 31) - 1, // Max allowed value for setInterval
-    (1 / +framesPerSecond) * 1000
+let intervalCleaner: number;
+const updateInterval = writable<number>(undefined);
+
+$: updateInterval.set(
+    Math.min(
+        Math.pow(2, 31) - 1, // Max allowed value for setInterval
+        (1 / +framesPerSecond) * 1000
+    )
 );
 
-let device: GPUDevice | undefined;
-
-let hasGpuSupport: boolean | null = null;
-
 onMount(async () => {
-    const canvas: HTMLCanvasElement = canvasRef!;
+    init(canvas!);
+});
 
-    const adapter = await navigator?.gpu?.requestAdapter();
-    device = await adapter?.requestDevice();
-
-    hasGpuSupport = !!device;
-    if (!device) return;
-
+function init(canvas: HTMLCanvasElement): void {
     const GRID = [Math.floor(width / scale), Math.floor(height / scale)];
-
     const WORKGROUP_SIZE = 8;
 
     const context = canvas.getContext('webgpu');
@@ -266,14 +264,14 @@ onMount(async () => {
 
     let step = 0; // Track how many simulation steps have been run
     function updateGrid() {
-        const encoder = device!.createCommandEncoder();
+        const encoder = device.createCommandEncoder();
 
         const randomness = Math.random();
         const i =
             randomness < chance
                 ? Math.floor((randomness / chance) * (GRID[0] * GRID[1])) + 1
                 : 0;
-        device!.queue.writeBuffer(randomFlipBuffer, 0, new Int32Array([i]));
+        device.queue.writeBuffer(randomFlipBuffer, 0, new Int32Array([i]));
 
         const computePass = encoder.beginComputePass();
 
@@ -306,17 +304,22 @@ onMount(async () => {
         pass.draw(vertices.length / 2, GRID[0] * GRID[1]);
 
         pass.end();
-        device!.queue.submit([encoder.finish()]);
+        device.queue.submit([encoder.finish()]);
     }
 
-    const intervalCleaner = setInterval(updateGrid, updateInterval);
+    updateInterval.subscribe((newInterval) => {
+        clearInterval(intervalCleaner);
+        updateGrid();
+        intervalCleaner = setInterval(updateGrid, newInterval);
+    });
+}
+
+onDestroy(() => {
+    clearInterval(intervalCleaner);
 });
 </script>
 
-<canvas bind:this={canvasRef} {width} {height} />
-{#if hasGpuSupport === false}
-    <div>It looks like your browser does not support WebGPU 😕</div>
-{/if}
+<canvas bind:this={canvas} {width} {height} />
 
 <style>
 canvas {
